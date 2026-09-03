@@ -1,0 +1,25 @@
+library(ComplexHeatmap)
+Data <- read.table("C1.txt", sep = "\t", header = T, row.names = 1)
+Data_mat <- as.matrix(Data)
+Data_mat1 <- as.matrix(Data[, 1:28])
+set.seed(9)
+library(circlize)
+col_fun = colorRamp2(c(-4, -2, 0), c("blue", "white", "red"))
+heatmap = Heatmap(Data_mat1, name = "log10(Frequency)", km =4, col = col_fun, cluster_columns = FALSE, show_row_names = FALSE, show_column_names = TRUE)
+heatmap_list = draw(heatmap)
+
+# k-means クラスタリングの行順とクラスタ番号を取得
+row_idx_list <- row_order(heatmap_list)      # 各クラスタ内の行順リスト
+cluster_numbers <- rep(NA, nrow(Data_mat1))  # クラスター番号用ベクトル
+
+for (i in seq_along(row_idx_list)) {
+  cluster_numbers[row_idx_list[[i]]] <- i
+}
+
+# クラスタ番号列をデータに追加し、クラスタ順に並べ替え
+ordered_data <- Data_mat1[unlist(row_idx_list), ]
+ordered_data <- cbind(Cluster = cluster_numbers[unlist(row_idx_list)], ordered_data)
+
+# ファイルに出力
+write.table(ordered_data, "ordered_data_with_cluster.txt", sep = "\t", quote = FALSE, row.names = TRUE)
+
