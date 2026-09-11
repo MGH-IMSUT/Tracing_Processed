@@ -1,0 +1,55 @@
+library(ComplexHeatmap)
+library(circlize)
+
+# ── データ読み込み ────────────────────────────────────────────────────────────
+Data <- read.table("C1.txt", sep = "\t", header = T, row.names = 1)
+Data_mat <- as.matrix(Data)
+Data_mat1 <- as.matrix(Data[, 1:28])
+
+cat("読み込み:", nrow(Data_mat1), "行\n")
+
+# ══ フィルタ ═══════════════════════════════════════════════════════════════════
+ND <- -2      # 非検出を表すセンチネル値
+
+# 条件1: HSC が非検出（== -2）のクローンのみ
+f_hsc <- Data_mat1[, "HSC"] == ND
+
+# 条件2: 非検出でない（> -2）列が 2つ以上
+n_detected <- rowSums(Data_mat1 > ND)
+f_det      <- n_detected >= 2
+
+keep <- f_hsc & f_det
+
+cat("  HSC == -2          :", sum(f_hsc),  "行\n")
+cat("  >-2 が2列以上      :", sum(f_det),  "行\n")
+cat("  両方を満たす (採用):", sum(keep),   "行\n")
+
+Data_mat1 <- Data_mat1[keep, , drop = FALSE]
+stopifnot(nrow(Data_mat1) > 0)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+set.seed(7)
+col_fun = colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+heatmap = Heatmap(Data_mat1, name = "log10(Frequency)", km = 8, col = col_fun,
+                  cluster_columns = FALSE, show_row_names = FALSE,
+                  show_column_names = TRUE)
+heatmap_list = draw(heatmap)
+
+# k-means クラスタリングの行順とクラスタ番号を取得
+row_idx_list <- row_order(heatmap_list)      # 各クラスタ内の行順リスト
+cluster_numbers <- rep(NA, nrow(Data_mat1))  # クラスター番号用ベクトル
+
+for (i in seq_along(row_idx_list)) {
+  cluster_numbers[row_idx_list[[i]]] <- i
+}
+
+# クラスタ番号列をデータに追加し、クラスタ順に並べ替え
+ordered_data <- Data_mat1[unlist(row_idx_list), ]
+ordered_data <- cbind(Cluster = cluster_numbers[unlist(row_idx_list)], ordered_data)
+
+# ファイルに出力
+write.table(ordered_data, "ordered_data_with_cluster.txt",
+            sep = "\t", quote = FALSE, row.names = TRUE)
+
+cat("\nクラスタサイズ (図の上→下):\n")
+print(lengths(row_idx_list))
