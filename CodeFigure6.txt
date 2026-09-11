@@ -1,0 +1,51 @@
+library(ComplexHeatmap)
+library(circlize)
+library(grid)
+
+Data <- read.table("C1.txt", sep = "\t", header = T, row.names = 1)
+Data_mat1 <- as.matrix(Data[, 2:29])
+
+col_fun = colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+
+is_gtg <- startsWith(Data$Center, "GTG")
+
+H <- unit(12, "cm") 
+
+ht_gtg <- Heatmap(
+  Data_mat1[is_gtg, , drop = FALSE],
+  col = col_fun,
+  name = "log10(Frequency)",
+  show_row_names = FALSE,
+  show_column_names = TRUE,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  heatmap_height = H,
+  column_title = sprintf("GTG (n = %d)", sum(is_gtg))
+)
+
+ht_other <- Heatmap(
+  Data_mat1[!is_gtg, , drop = FALSE],
+  col = col_fun,
+  name = "log10(Frequency)",
+  show_row_names = FALSE,
+  show_column_names = TRUE,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  heatmap_height = H,
+  column_title = sprintf("non-GTG (n = %d)", sum(!is_gtg)),
+  show_heatmap_legend = FALSE   # 凡例は左側の1つだけ
+)
+
+# 行数が違うので `+` では連結できない。grid で横に並べる
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(nrow = 1, ncol = 2)))
+
+pushViewport(viewport(layout.pos.row = 1, layout.pos.col = 1))
+draw(ht_gtg, newpage = FALSE)
+popViewport()
+
+pushViewport(viewport(layout.pos.row = 1, layout.pos.col = 2))
+draw(ht_other, newpage = FALSE)
+popViewport()
+
+popViewport()
