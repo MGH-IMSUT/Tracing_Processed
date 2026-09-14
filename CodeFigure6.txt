@@ -8,7 +8,7 @@ Data <- read.table("C1.txt", sep = "\t", header = T, row.names = 1)
 Data_mat1 <- as.matrix(Data[, 2:29])
 is_gtg    <- startsWith(Data$Center, "GTG")
 
-col_fun <- colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+col_fun <- colorRamp2(c(-4, -2, 0), c("blue", "white", "red"))
 
 cat("読み込み:", nrow(Data_mat1), "行  (GTG:", sum(is_gtg),
     " non-GTG:", sum(!is_gtg), ")\n\n")
