@@ -1,0 +1,103 @@
+library(ComplexHeatmap)
+library(circlize)
+library(grid)
+
+# ── データ読み込み ────────────────────────────────────────────────────────────
+Data <- read.table("C1.txt", sep = "\t", header = T, row.names = 1)
+# row.names=1 で 1列目が Center（文字列）。値列は 2:29
+Data_mat1 <- as.matrix(Data[, 2:29])
+is_gtg    <- startsWith(Data$Center, "GTG")
+
+col_fun <- colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+
+cat("読み込み:", nrow(Data_mat1), "行  (GTG:", sum(is_gtg),
+    " non-GTG:", sum(!is_gtg), ")\n\n")
+
+
+# ── Step 1: km = 9, seed = 0 でクラスタ番号を確定 ────────────────────────────
+set.seed(0)
+ht0 <- Heatmap(Data_mat1, name = "log10(Frequency)", km = 9, col = col_fun,
+               cluster_columns = FALSE, show_row_names = FALSE,
+               show_column_names = TRUE)
+ht0_drawn <- draw(ht0)
+
+row_idx_list <- row_order(ht0_drawn)   # 名前 = km クラスタ名, 並び = 描画順
+
+# row_order() の名前がクラスタ番号。連番を振り直さずそのまま使う
+cluster_numbers <- rep(NA_integer_, nrow(Data_mat1))
+for (nm in names(row_idx_list)) {
+  cluster_numbers[row_idx_list[[nm]]] <- as.integer(nm)
+}
+
+cat("Step 1 — クラスタ名 (描画順):", names(row_idx_list), "\n")
+cat("          サイズ            :", lengths(row_idx_list), "\n\n")
+
+
+# ── Step 2: cluster 2 を除去し、残り8つを描画順のまま並べる ──────────────────
+DROP     <- 2
+CL_ORDER <- setdiff(as.integer(names(row_idx_list)), DROP)   # 9,8,6,7,5,4,3,1
+
+keep <- cluster_numbers %in% CL_ORDER
+
+cat("Step 2 — 除去 (cluster", DROP, "):", sum(!keep), "行\n")
+cat("          残り              :", sum(keep), "行\n")
+cat("            GTG             :", sum(keep &  is_gtg), "行\n")
+cat("            non-GTG         :", sum(keep & !is_gtg), "行\n")
+cat("          並び (上→下)      :", CL_ORDER, "\n\n")
+
+# 各クラスタ内の行順は Step 1 の階層クラスタリング結果をそのまま使う
+flat_order <- function(sel) {
+  unlist(lapply(CL_ORDER, function(c) {
+    idx <- row_idx_list[[as.character(c)]]
+    idx[sel[idx]]
+  }))
+}
+
+o_gtg   <- flat_order( is_gtg)
+o_other <- flat_order(!is_gtg)
+
+
+# ── Step 3: GTG / non-GTG を横に並べる（高さを揃え、凡例は1つ）───────────────
+H <- unit(12, "cm")   # 両パネル共通の本体高さ
+
+make_ht <- function(o, title, show_legend) {
+  Heatmap(
+    Data_mat1[o, , drop = FALSE],
+    name                = "log10(Frequency)",
+    col                 = col_fun,
+    cluster_rows        = FALSE,   # 行順は CL_ORDER で固定
+    cluster_columns     = FALSE,
+    show_row_names      = FALSE,
+    show_column_names   = TRUE,
+    heatmap_height      = H,
+    column_title        = sprintf("%s (n = %d)", title, length(o)),
+    show_heatmap_legend = show_legend
+  )
+}
+
+ht_gtg   <- make_ht(o_gtg,   "GTG",     TRUE)
+ht_other <- make_ht(o_other, "non-GTG", FALSE)
+
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(nrow = 1, ncol = 2)))
+
+pushViewport(viewport(layout.pos.row = 1, layout.pos.col = 1))
+draw(ht_gtg, newpage = FALSE)
+popViewport()
+
+pushViewport(viewport(layout.pos.row = 1, layout.pos.col = 2))
+draw(ht_other, newpage = FALSE)
+popViewport()
+
+popViewport()
+
+
+# ── Step 4: クラスタ番号付きで書き出し ───────────────────────────────────────
+ro <- c(o_gtg, o_other)
+ordered_data <- cbind(Cluster = cluster_numbers[ro],
+                      GTG     = as.integer(is_gtg[ro]),
+                      Data_mat1[ro, ])
+write.table(ordered_data, "ordered_data_with_cluster.txt",
+            sep = "\t", quote = FALSE, row.names = TRUE)
+
+cat("Step 4 — ordered_data_with_cluster.txt に", nrow(ordered_data), "行を書き出し\n")
