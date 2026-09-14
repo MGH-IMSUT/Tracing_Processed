@@ -1,0 +1,118 @@
+library(ComplexHeatmap)
+library(circlize)
+
+# ══ 設定 ══════════════════════════════════════════════════════════════════════
+KM_TOP   <- 2     # 上段 (HSC > -2) の k-means クラスタ数
+SEED_TOP <- 0
+KM_BOT   <- 7     # 下段 (HSC == -2) の k-means クラスタ数
+SEED_BOT <- 3
+TOTAL_H  <- 14    # 上下の本体を合わせた高さ (cm)。1行あたりの高さはここから決まる
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+# ── データ読み込み ────────────────────────────────────────────────────────────
+Data <- read.table("C1.txt", sep = "\t", header = T, row.names = 1)
+Data_mat  <- as.matrix(Data)
+Data_mat1 <- as.matrix(Data[, 1:28])
+
+col_fun <- colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+
+# HSC 列を自動検出（parent_HSC / child_HSC / HSC いずれでも可）
+HSC <- grep("HSC$", colnames(Data_mat1), value = TRUE)[1]
+pos <- Data_mat1[, HSC] >  -2     # 上段: HSC 検出あり
+neg <- Data_mat1[, HSC] == -2     # 下段: HSC 非検出
+
+cat("HSC 列:", HSC, "\n")
+cat("  > -2 :", sum(pos), "クローン\n")
+cat("  == -2:", sum(neg), "クローン\n\n")
+
+
+# ── Step 1: 各群で個別に km を実行してクラスタを確定 ─────────────────────────
+# km は draw() 時に評価されるため、群ごとに draw して結果を取り出す
+get_slices <- function(M, KM, SEED) {
+  set.seed(SEED)
+  pdf(NULL)                                    # 作図せずクラスタだけ取得
+  rl <- row_order(draw(Heatmap(M, name = "tmp", km = KM, col = col_fun,
+                               cluster_columns = FALSE, show_row_names = FALSE)))
+  dev.off()
+  rl                                           # 名前 = クラスタ番号, 並び = 描画順
+}
+
+rl_top <- get_slices(Data_mat1[pos, , drop = FALSE], KM_TOP, SEED_TOP)
+rl_bot <- get_slices(Data_mat1[neg, , drop = FALSE], KM_BOT, SEED_BOT)
+
+cat("Step 1 — 上段 スライス名:", names(rl_top), " サイズ:", lengths(rl_top), "\n")
+cat("         下段 スライス名:", names(rl_bot), " サイズ:", lengths(rl_bot), "\n\n")
+
+
+# ── Step 2: 確定したクラスタを factor 化 ─────────────────────────────────────
+# row_split に渡すことで km を再実行させない（%v% だと seed が共通化されてしまう）
+as_factor <- function(rl, n) {
+  v <- rep(NA_character_, n)
+  for (nm in names(rl)) v[rl[[nm]]] <- nm
+  factor(v, levels = names(rl))                # 描画順を levels で固定
+}
+
+grp_top <- as_factor(rl_top, sum(pos))
+grp_bot <- as_factor(rl_bot, sum(neg))
+
+
+# ── Step 3: 1クローンあたりの高さを揃えて上下に結合 ──────────────────────────
+CELL <- unit(TOTAL_H / nrow(Data_mat1), "cm")  # 1行の高さ（上下共通）
+
+cat("Step 3 — 1クローンあたり:", round(TOTAL_H / nrow(Data_mat1) * 10, 4), "mm\n")
+cat("         上段の高さ:", round(TOTAL_H * sum(pos) / nrow(Data_mat1), 2), "cm\n")
+cat("         下段の高さ:", round(TOTAL_H * sum(neg) / nrow(Data_mat1), 2), "cm\n\n")
+
+ht_top <- Heatmap(
+  Data_mat1[pos, , drop = FALSE],
+  name               = "log10(Frequency)",
+  col                = col_fun,
+  row_split          = grp_top,
+  cluster_row_slices = FALSE,     # levels の順序を保持
+  cluster_columns    = FALSE,
+  show_row_names     = FALSE,
+  show_column_names  = FALSE,     # 列ラベルは下段のみ
+  show_row_dend      = FALSE,
+  row_title          = NULL,
+  height             = CELL * sum(pos)
+)
+
+ht_bot <- Heatmap(
+  Data_mat1[neg, , drop = FALSE],
+  name                = "log10(Frequency)",
+  col                 = col_fun,
+  row_split           = grp_bot,
+  cluster_row_slices  = FALSE,
+  cluster_columns     = FALSE,
+  show_row_names      = FALSE,
+  show_column_names   = TRUE,
+  show_row_dend       = FALSE,
+  row_title           = NULL,
+  height              = CELL * sum(neg),
+  show_heatmap_legend = FALSE     # 凡例は上段のみ
+)
+
+heatmap_list <- draw(ht_top %v% ht_bot, ht_gap = unit(1.5, "mm"))
+
+cat("結合後 上段:", lengths(row_order(heatmap_list)[[1]]), "\n")
+cat("結合後 下段:", lengths(row_order(heatmap_list)[[2]]), "\n\n")
+
+
+# ── Step 4: クラスタ番号付きで書き出し ───────────────────────────────────────
+# 上段 = T1..T2 / 下段 = B1..B7（row_order() の名前が km のクラスタ番号）
+idx_top <- which(pos)
+idx_bot <- which(neg)
+
+cluster_labels <- rep(NA_character_, nrow(Data_mat1))
+for (nm in names(rl_top)) cluster_labels[idx_top[rl_top[[nm]]]] <- paste0("T", nm)
+for (nm in names(rl_bot)) cluster_labels[idx_bot[rl_bot[[nm]]]] <- paste0("B", nm)
+
+ro <- c(unlist(lapply(names(rl_top), function(nm) idx_top[rl_top[[nm]]])),
+        unlist(lapply(names(rl_bot), function(nm) idx_bot[rl_bot[[nm]]])))
+
+ordered_data <- cbind(Cluster = cluster_labels[ro], Data_mat1[ro, ])
+write.table(ordered_data, "ordered_data_with_cluster.txt",
+            sep = "\t", quote = FALSE, row.names = TRUE)
+
+cat("Step 4 — ordered_data_with_cluster.txt に", nrow(ordered_data), "行を書き出し\n")
