@@ -15,7 +15,7 @@ Data <- read.table("C1.txt", sep = "\t", header = T, row.names = 1)
 Data_mat  <- as.matrix(Data)
 Data_mat1 <- as.matrix(Data[, 1:28])
 
-col_fun <- colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+col_fun <- colorRamp2(c(-4, -2, 0), c("blue", "white", "red"))
 
 # HSC 列を自動検出（parent_HSC / child_HSC / HSC いずれでも可）
 HSC <- grep("HSC$", colnames(Data_mat1), value = TRUE)[1]
